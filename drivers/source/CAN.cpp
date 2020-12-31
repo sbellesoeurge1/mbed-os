@@ -72,17 +72,13 @@ int CAN::frequency(int f)
 
 int CAN::write(CANMessage msg)
 {
-    lock();
     int ret = can_write(&_can, msg, 0);
-    unlock();
     return ret;
 }
 
 int CAN::read(CANMessage &msg, int handle)
 {
-    lock();
     int ret = can_read(&_can, &msg, handle);
-    unlock();
     return ret;
 }
 

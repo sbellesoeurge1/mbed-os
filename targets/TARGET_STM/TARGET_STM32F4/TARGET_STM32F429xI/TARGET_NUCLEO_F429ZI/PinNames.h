@@ -225,7 +225,7 @@ typedef enum {
     A0          = PA_3,
     A1          = PC_0,
     A2          = PC_3,
-    A3          = PF_3,
+    A3          = PD_11,    // anciennement PF_3,
     A4          = PF_5,
     A5          = PF_10,
     A6          = PB_1,
