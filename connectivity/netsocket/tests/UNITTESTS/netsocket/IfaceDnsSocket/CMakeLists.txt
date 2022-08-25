@@ -1,12 +1,14 @@
 # Copyright (c) 2021 ARM Limited. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+include(GoogleTest)
+
 set(TEST_NAME netsocket-iface-dns-socket-unittest)
 
 add_executable(${TEST_NAME})
 
 target_compile_definitions(${TEST_NAME}
-    PRIVATE        
+    PRIVATE
         MBED_CONF_NSAPI_DNS_ADDRESSES_LIMIT=10
         DEVICE_EMAC
         MBED_CONF_TARGET_NETWORK_DEFAULT_INTERFACE_TYPE=ETHERNET
@@ -20,13 +22,10 @@ target_sources(${TEST_NAME}
     PRIVATE
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/SocketAddress.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/NetworkInterface.cpp
-        ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/NetworkInterfaceDefaults.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/NetworkStack.cpp #nsapi_create_stack
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/InternetSocket.cpp
-        ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/TCPSocket.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/InternetDatagramSocket.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/UDPSocket.cpp
-        ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/SocketStats.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/EthernetInterface.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/EMACInterface.cpp
         ${mbed-os_SOURCE_DIR}/connectivity/netsocket/source/nsapi_dns.cpp
@@ -35,14 +34,15 @@ target_sources(${TEST_NAME}
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip4string/stoip4.c
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip6string/stoip6.c
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libBits/common_functions.c
-        ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libBits/common_functions.c
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libList/ns_list.c
         moduletest.cpp
 )
 
 target_link_libraries(${TEST_NAME}
     PRIVATE
-        mbed-headers
+        mbed-headers-events
+        mbed-headers-drivers
+        mbed-headers-rtos
         mbed-headers-nanostack-libservice
         mbed-headers-mbedtls
         mbed-headers-netsocket
@@ -52,6 +52,4 @@ target_link_libraries(${TEST_NAME}
         gmock_main
 )
 
-add_test(NAME "${TEST_NAME}" COMMAND ${TEST_NAME})
-
-set_tests_properties(${TEST_NAME} PROPERTIES LABELS "netsocket")
+gtest_discover_tests(${TEST_NAME} PROPERTIES LABELS "netsocket")

@@ -27,7 +27,7 @@ from xml.dom.minidom import parse, Node
 from argparse import RawTextHelpFormatter
 import subprocess
 
-GENPINMAP_VERSION = "1.20.2"
+GENPINMAP_VERSION = "1.20.5"
 
 ADD_DEVICE_IF = 0
 ADD_GPIO_PINMAP = 0
@@ -191,6 +191,8 @@ def get_gpio_af_num(pintofind, iptofind):
                                                             if mygpioaf != "":
                                                                 mygpioaf += " "
                                                             mygpioaf += mygpioaflist.data
+    if "STM32L1" in mcu_file and mygpioaf == "GPIO_AF10_USB":
+        mygpioaf = "GPIO_AF_NONE"
     if mygpioaf == "":
         mygpioaf = "GPIO_AF_NONE"
     return mygpioaf
@@ -240,25 +242,10 @@ def get_gpio_af_num_stm32f1(pintofind, iptofind):
                                                             ) in myc.childNodes:
                                                                 if mygpioaf != "":
                                                                     mygpioaf += " "
-                                                                mygpioaf += mygpioaflist.data.replace(
-                                                                    "__HAL_", ""
-                                                                ).replace(
-                                                                    "_REMAP", ""
-                                                                )
+                                                                mygpioaf += mygpioaflist.data.replace("__HAL_", "")
     if mygpioaf == "":
         mygpioaf = "AFIO_NONE"
-    return mygpioaf.replace("AFIO_NONE", "0")\
-       .replace("AFIO_SPI1_ENABLE", "1")\
-       .replace("AFIO_I2C1_ENABLE", "2")\
-       .replace("AFIO_USART1_ENABLE", "3")\
-       .replace("AFIO_USART3_PARTIAL", "5")\
-       .replace("AFIO_TIM1_PARTIAL", "6")\
-       .replace("AFIO_TIM3_PARTIAL", "7")\
-       .replace("AFIO_TIM2_ENABLE", "8")\
-       .replace("AFIO_TIM2_PARTIAL_1", "8")\
-       .replace("AFIO_TIM2_PARTIAL_2", "8")\
-       .replace("AFIO_TIM3_ENABLE", "9")\
-       .replace("AFIO_CAN1_2", "10")
+    return mygpioaf
 
 def store_pin(pin, name, functionality):
     # store pin I/O
@@ -388,7 +375,37 @@ def store_osc(pin, name, signal):
 
 # function to store SYS pins
 def store_sys(pin, name, signal):
+    if 'PWR_WKUP' in signal:
+        signal = "SYS_" + signal
     sys_list.append([pin, name, signal])
+
+
+
+def make_cmakelist():
+    global TARGET_NAME
+    if TARGET_NAME == "":
+        TARGET_NAME = "xxx"
+    mbed_target = "mbed-" + TARGET_NAME.replace("_", "-").lower()
+    mbed_family = "mbed-" + TARGET_SUBFAMILY.lower()
+
+    line_to_write =  ("""# Copyright (c) %i ARM Limited. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+add_library(%s INTERFACE)
+
+target_sources(%s
+    INTERFACE
+        PeripheralPins.c
+)
+
+target_include_directories(%s
+    INTERFACE
+        .
+)
+
+target_link_libraries(%s INTERFACE %s)
+""" % (datetime.datetime.now().year, mbed_target, mbed_target, mbed_target, mbed_target, mbed_family))
+    cmake_file.write(line_to_write)
 
 
 def print_header():
@@ -501,12 +518,16 @@ def print_footer():
        LED_list.append("Pxx")
     StandardLED = {}
     for EachLED in LED_list:
-        PinLabel[EachLED] = "TODO"
+        if EachLED not in PinLabel:
+            PinLabel[EachLED] = "TODO"
         StandardLED[PinLabel[EachLED]] = EachLED
 
     for EachLED in sorted(StandardLED):
         led_label = " // %s" % EachLED
-        out_h_file.write("#define LED%i     %-5s %s\n" % (name_counter, re.sub(r'(P.)', r'\1_', StandardLED[EachLED]), led_label))
+        commented_line = ""
+        if "TODO" in led_label:
+            commented_line = "// "
+        out_h_file.write("%s#define LED%i     %-5s %s\n" % (commented_line, name_counter, re.sub(r'(P.)', r'\1_', StandardLED[EachLED]), led_label))
         name_counter += 1
 
     name_counter = 1
@@ -516,7 +537,10 @@ def print_footer():
         button_label = ""
         if EachBUTTON in PinLabel:
             button_label = " // %s" % PinLabel[EachBUTTON]
-        out_h_file.write("#define BUTTON%i  %-5s %s\n" % (name_counter, re.sub(r'(P.)', r'\1_', EachBUTTON).split('/')[0].split('-')[0], button_label))
+        commented_line = ""
+        if "TODO" in button_label:
+            commented_line = "// "
+        out_h_file.write("%s#define BUTTON%i  %-5s %s\n" % (commented_line, name_counter, re.sub(r'(P.)', r'\1_', EachBUTTON).split('/')[0].split('-')[0], button_label))
         name_counter += 1
 
     line_to_write = ("""
@@ -1566,9 +1590,13 @@ specify a custom board .ioc file description to use (use double quotes).
 
 parser.add_argument("-g", "--gpio", help="Add GPIO PinMap table", action="store_true")
 parser.add_argument("-n", "--nopull", help="Avoid STM32_open_pin_data git pull", action="store_true")
-parser.add_argument("-f", "--flat", help="All targets stored in targets_custom/TARGET_STM/", action="store_true")
+parser.add_argument("-f", "--flat", help="All targets stored in TARGET_CUSTOM/TARGET_STM/", action="store_true")
+parser.add_argument("-d", "--debug", help="Few debug info in console", action="store_true")
 
 args = parser.parse_args()
+
+if args.debug:
+    DEBUG_PRINT = 1
 
 print ("\nChecking STM32_open_pin_data repo...")
 if not os.path.exists("STM32_open_pin_data"):
@@ -1652,6 +1680,9 @@ if args.target:
     board_file_name = os.path.join(cubemxdirBOARDS, args.target)
     if not(os.path.isfile(board_file_name)):
         board_list = fnmatch.filter(os.listdir(cubemxdirBOARDS), '*%s*AllConfig.ioc' % args.target)
+        for item in list(board_list):
+            if "TrustZone" in item:
+                board_list.remove(item)
         if len(board_list) == 0:
             print (" ! ! ! No file contains " + args.target)
             print (" ! ! ! Check in " + cubemxdirBOARDS + " the correct filter to apply")
@@ -1698,12 +1729,12 @@ if args.target:
 
     parse_board_file(board_file_name)
     if "Nucleo" in board_file_name:
-        TARGET_NAME += "NUCLEO_"
+        TARGET_NAME = "NUCLEO_"
     elif "Discovery" in board_file_name:
-        TARGET_NAME += "DISCO_"
+        TARGET_NAME = "DISCO_"
     elif "Evaluation" in board_file_name:
-        TARGET_NAME += "EVAL_"
-    m = re.search(r'STM32([MFLGWH][\w]*)_Board', board_file_name)
+        TARGET_NAME = "EVAL_"
+    m = re.search(r'STM32([MFLGWHU][\w]*)_Board', board_file_name)
     if m:
         TARGET_NAME += "%s" % m.group(1)
         # specific case
@@ -1718,6 +1749,7 @@ if args.target:
             "DISCO_L4S5V": "B_L4S5I_IOT01A",
             "DISCO_G071RBT": "DISCO_G071RB",
             "DISCO_L4R9A": "DISCO_L4R9I",
+            "DISCO_U585AI": "B_U585I_IOT02A",
             "NUCLEO_WB55R": "NUCLEO_WB55RG",
             "NUCLEO_WL55JCI": "NUCLEO_WL55JC",
             "NUCLEO_H743ZIT": "NUCLEO_H743ZI2",
@@ -1810,7 +1842,10 @@ for mcu_file in mcu_list:
         if args.mcu:
             m = re.match("(STM32[\w]{7})", EachTargetName)
             if m:
-                out_path = os.path.join(cur_dir, 'targets_custom', 'TARGET_STM', 'TARGET_%s' %TARGET_FAMILY, 'TARGET_%s' %TARGET_SUBFAMILY, 'TARGET_%s' % m.group(0))
+                if FLAT_DIRECTORY == 0:
+                    out_path = os.path.join(cur_dir, 'TARGET_CUSTOM', 'TARGET_STM', 'TARGET_%s' %TARGET_FAMILY, 'TARGET_%s' %TARGET_SUBFAMILY, 'TARGET_%s' % m.group(0))
+                else:
+                    out_path = os.path.join(cur_dir, 'TARGET_CUSTOM', 'TARGET_%s' % m.group(0))
                 if EachTargetName.endswith('A'):
                     out_path += "_A"
                 elif EachTargetName.endswith('P'):
@@ -1829,9 +1864,9 @@ for mcu_file in mcu_list:
         else:
             if EachTargetName == MCU_USERNAME:
                 if FLAT_DIRECTORY == 0:
-                    out_path = os.path.join(cur_dir, 'targets_custom', 'TARGET_STM', 'TARGET_%s' % TARGET_FAMILY, 'TARGET_%s' % TARGET_SUBFAMILY, 'TARGET_%s' % TARGET_NAME)
+                    out_path = os.path.join(cur_dir, 'TARGET_CUSTOM', 'TARGET_STM', 'TARGET_%s' % TARGET_FAMILY, 'TARGET_%s' % TARGET_SUBFAMILY, 'TARGET_%s' % TARGET_NAME)
                 else:
-                    out_path = os.path.join(cur_dir, 'targets_custom', 'TARGET_STM', 'TARGET_%s' % TARGET_NAME)
+                    out_path = os.path.join(cur_dir, 'TARGET_CUSTOM', 'TARGET_%s' % TARGET_NAME)
             else:
                 continue
 
@@ -1845,14 +1880,17 @@ for mcu_file in mcu_list:
         print(" * Generating %s and %s with '%s'" % (PeripheralPins_c_filename, PinNames_h_filename, input_file_name))
         output_cfilename = os.path.join(out_path, PeripheralPins_c_filename)
         output_hfilename = os.path.join(out_path, PinNames_h_filename)
+        cmake_filename = os.path.join(out_path, "CMakeLists.txt")
 
         if os.path.isfile(output_cfilename):
             print_debug(" * Requested %s file already exists and will be overwritten" % PeripheralPins_c_filename)
             os.remove(output_cfilename)
         out_c_file = open(output_cfilename, 'w')
         out_h_file = open(output_hfilename, 'w')
+        cmake_file = open(cmake_filename, 'w')
 
         #open input file
+        DUAL_PAD = False
         try:
             xml_mcu = parse(input_file_name)
         except:
@@ -1897,6 +1935,7 @@ for mcu_file in mcu_list:
         print_header()
         print_all_lists()
         print_footer()
+        make_cmakelist()
 
         nb_pin = (len(gpio_list))
         nb_connected_pin = len(PinLabel)
@@ -1905,3 +1944,4 @@ for mcu_file in mcu_list:
 
         out_c_file.close()
         out_h_file.close()
+        cmake_file.close()

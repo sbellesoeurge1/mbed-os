@@ -20,6 +20,9 @@
 
 #include "USBPhyHw.h"
 #include "pinmap.h"
+#if defined(TARGET_STM32L1) && defined(SYSCFG_PMC_USB_PU)
+#include "stm32l1xx_ll_system.h"
+#endif
 
 /* endpoint conversion macros */
 #define EP_TO_LOG(ep)       ((ep) & 0xF)
@@ -189,15 +192,28 @@ USBPhyHw::~USBPhyHw()
 
 }
 
-#if defined(TARGET_STM32F1)
+#if defined(TARGET_STM32F1) || defined(TARGET_STM32F3) || defined(SYSCFG_PMC_USB_PU)
 
-#include "drivers/DigitalOut.h"
+#include "drivers/DigitalInOut.h"
 
 void USB_reenumerate()
 {
-    // Force USB_DP pin (with external pull up) to 0
-    mbed::DigitalOut usb_dp_pin(USB_DP, 0) ;
+#if defined(SYSCFG_PMC_USB_PU)
+    // Manage internal pullups manually
+    LL_SYSCFG_DisableUSBPullUp();
     wait_us(10000); // 10ms
+    LL_SYSCFG_EnableUSBPullUp();
+#elif defined(USB_PULLUP_CONTROL)
+    mbed::DigitalInOut usb_dp_pin(USB_PULLUP_CONTROL, PIN_OUTPUT, PullNone, 0);
+    wait_us(1000);
+    usb_dp_pin = 1;
+    wait_us(1000);
+#else
+    // Force USB_DP pin (with external pull up) to 0
+    mbed::DigitalInOut usb_dp_pin(USB_DP, PIN_OUTPUT, PullNone, 0);
+    wait_us(10000); // 10ms
+    usb_dp_pin.input(); // revert as input
+#endif
 }
 #endif
 
@@ -282,9 +298,10 @@ void USBPhyHw::init(USBPhyEvents *events)
     hpcd.Init.speed = PCD_SPEED_FULL;
 
     __HAL_RCC_USB_CLK_ENABLE();
+
     map = PinMap_USB_FS;
 
-#if defined(TARGET_STM32F1)
+#if defined(TARGET_STM32F1) || defined(TARGET_STM32F3) || defined(SYSCFG_PMC_USB_PU)
     // USB_DevConnect is empty
     USB_reenumerate();
 #endif
@@ -318,6 +335,7 @@ void USBPhyHw::init(USBPhyEvents *events)
     HAL_StatusTypeDef ret = HAL_PCD_Init(&hpcd);
     MBED_ASSERT(ret == HAL_OK);
     __HAL_PCD_ENABLE(&hpcd);
+    HAL_PCD_Start(&hpcd);
 
     // Configure FIFOs
 #if (MBED_CONF_TARGET_USB_SPEED == USE_USB_NO_OTG)
@@ -406,7 +424,7 @@ void USBPhyHw::connect()
     // Initializes the USB controller registers
     USB_DevInit(hpcd.Instance, hpcd.Init); // hpcd.Init not used
 
-#if defined(TARGET_STM32F1)
+#if defined(TARGET_STM32F1) || defined(TARGET_STM32F3) || defined(SYSCFG_PMC_USB_PU)
     // USB_DevConnect is empty
     USB_reenumerate();
 #endif

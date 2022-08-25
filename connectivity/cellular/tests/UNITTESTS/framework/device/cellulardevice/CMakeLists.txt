@@ -1,6 +1,8 @@
 # Copyright (c) 2021 ARM Limited. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+include(GoogleTest)
+
 set(TEST_NAME cellular-framework-device-cellular-device-unittest)
 
 add_executable(${TEST_NAME})
@@ -27,15 +29,17 @@ target_sources(${TEST_NAME}
 
 target_link_libraries(${TEST_NAME}
     PRIVATE
+        mbed-headers-platform
+        mbed-headers-events
+        mbed-headers-rtos
+        mbed-headers-drivers
+        mbed-headers-hal
         mbed-headers-netsocket
-        mbed-headers
         mbed-headers-cellular
-        mbed-stubs
         mbed-stubs-cellular
-        mbed-stubs-headers
+        mbed-stubs-platform
+        mbed-stubs-events
         gmock_main
 )
 
-add_test(NAME "${TEST_NAME}" COMMAND ${TEST_NAME})
-
-set_tests_properties(${TEST_NAME} PROPERTIES LABELS "cellular")
+gtest_discover_tests(${TEST_NAME} PROPERTIES LABELS "cellular")

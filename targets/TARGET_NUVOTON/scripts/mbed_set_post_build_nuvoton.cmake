@@ -1,27 +1,51 @@
 # Copyright (c) 2021 ARM Limited. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-include(${MBED_PATH}/tools/cmake/mbed_set_post_build.cmake)
+include(mbed_set_post_build)
 
 #
 # Sign TF-M secure and non-secure images and combine them with the bootloader
 #
-function(mbed_post_build_nuvoton_tfm_sign_image_tgt
-    mbed_target
+macro(mbed_post_build_nuvoton_tfm_sign_image
+    nuvoton_target
     tfm_import_path
     signing_key
+    signing_key_1
 )
-    find_package(Python3)
+    if("${nuvoton_target}" STREQUAL "${MBED_TARGET}")
+        function(mbed_post_build_function target)
+            find_package(Python3)
 
-    set(mbed_target_name ${mbed_target})
-    set(post_build_command
-        COMMAND ${Python3_EXECUTABLE}
-            ${MBED_PATH}/targets/TARGET_NUVOTON/scripts/NUVOTON.py
-            tfm_sign_image_tgt
-            --tfm-import-path ${tfm_import_path}
-            --signing_key ${signing_key}
-            --non-secure-bin ${CMAKE_BINARY_DIR}/$<TARGET_PROPERTY:mbed-post-build-bin-${mbed_target_name},application>.bin
-    )
-
-    mbed_set_post_build_operation()
-endfunction()
+            # NOTE: Macro arguments are not variables and cannot pass to if(<condition>).
+            set(signing_key_1_ ${signing_key_1})
+            if(signing_key_1_)
+                add_custom_command(
+                    TARGET
+                        ${target}
+                    POST_BUILD
+                    COMMAND
+                        ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NUVOTON.py
+                        tfm_sign_image
+                        --tfm-import-path ${tfm_import_path}
+                        --signing_key ${signing_key}
+                        --signing_key_1 ${signing_key_1}
+                        --non-secure-bin $<TARGET_FILE_DIR:${target}>/$<TARGET_FILE_BASE_NAME:${target}>.bin
+                )
+            else()
+                add_custom_command(
+                    TARGET
+                        ${target}
+                    POST_BUILD
+                    COMMAND
+                        ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NUVOTON.py
+                        tfm_sign_image
+                        --tfm-import-path ${tfm_import_path}
+                        --signing_key ${signing_key}
+                        --non-secure-bin $<TARGET_FILE_DIR:${target}>/$<TARGET_FILE_BASE_NAME:${target}>.bin
+                )
+            endif()
+        endfunction()
+    endif()
+endmacro()

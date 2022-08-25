@@ -5,6 +5,17 @@
 
 cmake_minimum_required(VERSION 3.19.0 FATAL_ERROR)
 
+option(BUILD_GREENTEA_TESTS "Build greentea tests only." OFF)
+
+if(BUILD_GREENTEA_TESTS)
+    # Usually we rely on the application to set MBED_CONFIG_PATH and include
+    # app.cmake. They are both required if we're building an application to run
+    # on an mbed-target.
+    set(MBED_CONFIG_PATH ${CMAKE_CURRENT_BINARY_DIR} CACHE STRING "")
+    # TODO: Remove when https://github.com/ARMmbed/mbed-os/issues/14518 is fixed
+    include(${CMAKE_CURRENT_LIST_DIR}/tools/cmake/app.cmake)
+endif()
+
 if(${CMAKE_CROSSCOMPILING})
     include(${MBED_CONFIG_PATH}/mbed_config.cmake)
     include(mbed_set_linker_script)
@@ -14,17 +25,19 @@ project(mbed-os)
 
 # Add all paths to the list files within Mbed OS
 list(APPEND CMAKE_MODULE_PATH
-    "${mbed-os_SOURCE_DIR}/platform/FEATURE_EXPERIMENTAL_API/FEATURE_PSA/TARGET_TFM/TARGET_TFM_LATEST/scripts;${mbed-os_SOURCE_DIR}/targets/TARGET_Cypress/scripts;${mbed-os_SOURCE_DIR}/targets/TARGET_NXP/scripts"
+    "${mbed-os_SOURCE_DIR}/platform/FEATURE_EXPERIMENTAL_API/FEATURE_PSA/TARGET_TFM/TARGET_TFM_LATEST/scripts;${mbed-os_SOURCE_DIR}/targets/TARGET_Cypress/scripts;${mbed-os_SOURCE_DIR}/targets/TARGET_NXP/scripts;${mbed-os_SOURCE_DIR}/targets/TARGET_NUVOTON/scripts/"
 )
 
 add_subdirectory(extern)
 
-option(BUILD_TESTING "Run unit tests only." OFF)
-
-if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME AND BUILD_TESTING)
+if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     include(CTest)
-    add_definitions(-DUNITTEST)
-    add_subdirectory(UNITTESTS)
+
+    if((NOT BUILD_GREENTEA_TESTS) AND BUILD_TESTING)
+        # Building unit tests only.
+        add_definitions(-DUNITTEST)
+        add_subdirectory(UNITTESTS)
+    endif()
 endif()
 
 add_library(mbed-core INTERFACE)
@@ -88,16 +101,19 @@ if(${CMAKE_CROSSCOMPILING})
 
     target_compile_definitions(mbed-core
         INTERFACE
+            TARGET_NAME=${MBED_TARGET}
             ${MBED_TARGET_DEFINITIONS}
             ${MBED_CONFIG_DEFINITIONS}
     )
 
     # Add MBED_TEST_MODE for backward compatibility with Greentea tests written for use with Mbed CLI 1
     if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME AND BUILD_TESTING)
-        target_compile_definitions(${PROJECT_NAME}
-            INTERFACE
-                MBED_TEST_MODE
-        )
+        if(NOT BUILD_GREENTEA_TESTS)
+            target_compile_definitions(${PROJECT_NAME}
+                INTERFACE
+                    MBED_TEST_MODE
+            )
+        endif()
     endif()
 
     # We need to generate a "response file" to pass to the C preprocessor when we preprocess the linker
@@ -144,12 +160,16 @@ target_include_directories(mbed-core
 add_library(mbed-device_key INTERFACE)
 add_library(mbed-rtos INTERFACE)
 
+# Include targets/ first, because any post-build hook needs to be defined
+# before other parts of Mbed OS can add greentea tests which require
+# mbed_set_post_build().
+add_subdirectory(targets)
+
 add_subdirectory(cmsis)
 add_subdirectory(drivers)
 add_subdirectory(hal)
 add_subdirectory(platform)
 add_subdirectory(rtos)
-add_subdirectory(targets)
 add_subdirectory(storage)
 add_subdirectory(events)
 add_subdirectory(connectivity)
@@ -171,127 +191,13 @@ if(${CMAKE_CROSSCOMPILING})
     target_link_libraries(mbed-core INTERFACE ${MBED_TARGET_CONVERTED})
 endif()
 
-#
-# Converts output file of `target` to binary file and to Intel HEX file.
-#
-function(mbed_generate_bin_hex target)
-    get_property(elf_to_bin GLOBAL PROPERTY ELF2BIN)
-    if (MBED_TOOLCHAIN STREQUAL "GCC_ARM")
-        # The first condition is quoted in case MBED_OUTPUT_EXT is unset
-        if ("${MBED_OUTPUT_EXT}" STREQUAL "" OR MBED_OUTPUT_EXT STREQUAL "bin")
-            list(APPEND CMAKE_POST_BUILD_COMMAND
-                COMMAND ${elf_to_bin} -O binary $<TARGET_FILE:${target}> ${CMAKE_CURRENT_BINARY_DIR}/${target}.bin
-                COMMAND ${CMAKE_COMMAND} -E echo "-- built: ${CMAKE_CURRENT_BINARY_DIR}/${target}.bin"
-            )
-        endif()
-        if ("${MBED_OUTPUT_EXT}" STREQUAL "" OR MBED_OUTPUT_EXT STREQUAL "hex")
-            list(APPEND CMAKE_POST_BUILD_COMMAND
-                COMMAND ${elf_to_bin} -O ihex $<TARGET_FILE:${target}> ${CMAKE_CURRENT_BINARY_DIR}/${target}.hex
-                COMMAND ${CMAKE_COMMAND} -E echo "-- built: ${CMAKE_CURRENT_BINARY_DIR}/${target}.hex"
-            )
-        endif()
-    elseif(MBED_TOOLCHAIN STREQUAL "ARM")
-        get_property(mbed_studio_arm_compiler GLOBAL PROPERTY MBED_STUDIO_ARM_COMPILER)
-        if ("${MBED_OUTPUT_EXT}" STREQUAL "" OR MBED_OUTPUT_EXT STREQUAL "bin")
-            list(APPEND CMAKE_POST_BUILD_COMMAND
-                COMMAND ${elf_to_bin} ${mbed_studio_arm_compiler} --bin  -o ${CMAKE_CURRENT_BINARY_DIR}/${target}.bin $<TARGET_FILE:${target}>
-                COMMAND ${CMAKE_COMMAND} -E echo "-- built: ${CMAKE_CURRENT_BINARY_DIR}/${target}.bin"
-            )
-        endif()
-        if ("${MBED_OUTPUT_EXT}" STREQUAL "" OR MBED_OUTPUT_EXT STREQUAL "hex")
-            list(APPEND CMAKE_POST_BUILD_COMMAND
-            COMMAND ${elf_to_bin} ${mbed_studio_arm_compiler} --i32combined  -o ${CMAKE_CURRENT_BINARY_DIR}/${target}.hex $<TARGET_FILE:${target}>
-            COMMAND ${CMAKE_COMMAND} -E echo "-- built: ${CMAKE_CURRENT_BINARY_DIR}/${target}.hex"
-            )
-        endif()
-    endif()
-    add_custom_command(
-        TARGET
-            ${target}
-        POST_BUILD
-            ${CMAKE_POST_BUILD_COMMAND}
-        COMMENT
-            "executable:"
-        VERBATIM
-    )
-
-    if(TARGET mbed-post-build-bin-${MBED_TARGET})
-        # Remove the .elf file to force regenerate the application binaries
-        # (including .bin and .hex). This ensures that the post-build script runs
-        # on a raw application instead of a previous build that already went
-        # through the post-build process once.
-        file(REMOVE ${CMAKE_CURRENT_BINARY_DIR}/${target}.elf)
-
-        # Pass the application's name to the Mbed target's post build operation
-        set_target_properties(mbed-post-build-bin-${MBED_TARGET}
-            PROPERTIES
-                application ${target}
-        )
-
-        # The artefacts must be created before they can be further manipulated
-        add_dependencies(mbed-post-build-bin-${MBED_TARGET} ${target})
-
-        # Add a post-build hook to the top-level CMake target in the form of a
-        # CMake custom target. The hook depends on Mbed target specific
-        # post-build CMake target which has a custom command attached to it.
-        add_custom_target(mbed-post-build ALL DEPENDS mbed-post-build-bin-${MBED_TARGET})
-    endif()
-endfunction()
-
-#
-# Parse toolchain generated map file of `target` and display a readable table format.
-#
-function(mbed_generate_map_file target)
-     add_custom_command(
-         TARGET
-             ${target}
-         POST_BUILD
-         COMMAND ${Python3_EXECUTABLE} ${mbed-os_SOURCE_DIR}/tools/memap.py -t ${MBED_TOOLCHAIN} ${CMAKE_CURRENT_BINARY_DIR}/${target}${CMAKE_EXECUTABLE_SUFFIX}.map
-         WORKING_DIRECTORY
-             ${CMAKE_CURRENT_BINARY_DIR}
-         COMMENT
-             "Displaying memory map for ${target}"
-)
-endfunction()
-
-#
-# Validate selected application profile.
-#
-function(mbed_validate_application_profile target)
-    get_target_property(app_link_libraries ${target} LINK_LIBRARIES)
-    string(FIND "${app_link_libraries}" "mbed-baremetal" string_found_position)
-    if(${string_found_position} GREATER_EQUAL 0)
-        if(NOT "bare-metal" IN_LIST MBED_TARGET_SUPPORTED_APPLICATION_PROFILES)
-            message(FATAL_ERROR
-                "Use full profile as baremetal profile is not supported for this Mbed target")
-        endif()
-    elseif(NOT "full" IN_LIST MBED_TARGET_SUPPORTED_APPLICATION_PROFILES)
-        message(FATAL_ERROR
-            "The full profile is not supported for this Mbed target")
-    endif()
-endfunction()
-
-#
-# Set post build operations
-#
-function(mbed_set_post_build target)
-    # The mapfile name includes the top-level target name and the
-    # executable suffix for all toolchains as CMake hardcodes the name of the
-    # diagnostic output file for some toolchains.
-    mbed_configure_memory_map(${target} "${CMAKE_CURRENT_BINARY_DIR}/${target}${CMAKE_EXECUTABLE_SUFFIX}.map")
-    mbed_validate_application_profile(${target})
-    mbed_generate_bin_hex(${target})
-
-    if(HAVE_MEMAP_DEPS)
-        mbed_generate_map_file(${target})
-    endif()
-endfunction()
-
 # Ninja requires to be forced for response files
 if ("${CMAKE_GENERATOR}" MATCHES "Ninja")
     # known issue ARMClang and Ninja with response files for windows
     # https://gitlab.kitware.com/cmake/cmake/-/issues/21093
-    if((CMAKE_HOST_SYSTEM_NAME MATCHES "Windows" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "ARMClang"))
+    # This gets fixed in newer cmake version
+    # https://gitlab.kitware.com/cmake/cmake/-/merge_requests/6484
+    if((CMAKE_HOST_SYSTEM_NAME MATCHES "Windows") AND ((${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.22.0") OR (NOT CMAKE_CXX_COMPILER_ID MATCHES "ARMClang")))
         set(CMAKE_NINJA_FORCE_RESPONSE_FILE 1 CACHE INTERNAL "")
     endif()
 endif()

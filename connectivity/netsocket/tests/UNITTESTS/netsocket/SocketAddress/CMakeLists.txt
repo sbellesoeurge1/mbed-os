@@ -1,6 +1,8 @@
 # Copyright (c) 2021 ARM Limited. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+include(GoogleTest)
+
 set(TEST_NAME netsocket-socket-address-unittest)
 
 add_executable(${TEST_NAME})
@@ -12,13 +14,12 @@ target_sources(${TEST_NAME}
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip6string/ip6tos.c
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip4string/stoip4.c
         ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libip6string/stoip6.c
-        ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libBits/common_functions.c   
+        ${mbed-os_SOURCE_DIR}/connectivity/libraries/nanostack-libservice/source/libBits/common_functions.c
         test_SocketAddress.cpp
 )
 
 target_link_libraries(${TEST_NAME}
     PRIVATE
-        mbed-headers
         mbed-headers-nanostack-libservice
         mbed-headers-netsocket
         mbed-stubs
@@ -26,6 +27,4 @@ target_link_libraries(${TEST_NAME}
         gmock_main
 )
 
-add_test(NAME "${TEST_NAME}" COMMAND ${TEST_NAME})
-
-set_tests_properties(${TEST_NAME} PROPERTIES LABELS "netsocket")
+gtest_discover_tests(${TEST_NAME} PROPERTIES LABELS "netsocket")

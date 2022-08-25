@@ -11,11 +11,14 @@ if(CCACHE)
 endif()
 
 include(${MBED_CONFIG_PATH}/mbed_config.cmake)
+include(mbed_set_post_build)
 
 # Load toolchain file
 if(NOT CMAKE_TOOLCHAIN_FILE OR MBED_TOOLCHAIN_FILE_USED)
     set(MBED_TOOLCHAIN_FILE_USED TRUE CACHE INTERNAL "")
-    include(mbed_toolchain)
+    # We want to bring CMP0123 we set in mbed_toolchain.cmake
+    # to the whole Mbed OS.
+    include(mbed_toolchain NO_POLICY_SCOPE)
 endif()
 
 # Specify available build profiles and add options for the selected build profile
@@ -57,4 +60,7 @@ else()
     set(HAVE_MEMAP_DEPS FALSE)
     message(STATUS "Missing Python dependencies (python3, intelhex, prettytable) so the memory map cannot be printed")
 endif()
+
+# load mbed_create_distro
+include(${CMAKE_CURRENT_LIST_DIR}/create_distro.cmake)
 

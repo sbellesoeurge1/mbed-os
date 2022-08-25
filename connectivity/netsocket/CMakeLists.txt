@@ -2,7 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME AND BUILD_TESTING)
-    add_subdirectory(tests/UNITTESTS)
+    if(BUILD_GREENTEA_TESTS)
+        # add greentea test
+    else()
+        add_subdirectory(tests/UNITTESTS)
+    endif()
 endif()
 
 # TODO CMake: Perhaps move this/these file(s) into connectivity/drivers/cellular
@@ -65,6 +69,7 @@ endif()
 
 target_link_libraries(mbed-netsocket
     INTERFACE
+        mbed-wifi
         mbed-cellular
         mbed-nanostack-libservice
 )

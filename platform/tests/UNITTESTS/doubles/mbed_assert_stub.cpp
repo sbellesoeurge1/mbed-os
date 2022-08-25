@@ -16,6 +16,7 @@
  */
 
 #include "platform/mbed_assert.h"
+#include "gtest/gtest.h"
 #include <stdio.h>
 #include <stdbool.h>
 
@@ -25,6 +26,16 @@ extern "C" void mbed_assert_internal(const char *expr, const char *file, int lin
 {
     fprintf(stderr, "mbed assertation failed: %s, file: %s, line %d \n", expr, file, line);
     if (mbed_assert_throw_errors) {
+#ifdef __EXCEPTIONS
         throw 1;
+#else
+        FAIL();
+#endif
     }
+
+    /* Ensure we fail the unit test if the Mbed assertion fails. Without this,
+     * we might not notice the assertion failure as it wouldn't be bubbled up
+     * to googletest. Note that this is after the above throw, as some tests
+     * check that an exception is thrown (i.e. negative tests). */
+    FAIL();
 }

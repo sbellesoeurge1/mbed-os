@@ -5,6 +5,7 @@ add_library(mbed-headers-lorawan INTERFACE)
 
 target_include_directories(mbed-headers-lorawan
     INTERFACE
+        ${mbed-os_SOURCE_DIR}/connectivity
         ${mbed-os_SOURCE_DIR}/connectivity/lorawan/include/lorawan
         ${mbed-os_SOURCE_DIR}/connectivity/lorawan/lorastack
         ${mbed-os_SOURCE_DIR}/connectivity/lorawan/lorastack/mac
@@ -39,11 +40,9 @@ target_sources(mbed-stubs-lorawan
 
 target_link_libraries(mbed-stubs-lorawan
     PRIVATE
-        mbed-headers-base
         mbed-headers-events
         mbed-headers-hal
         mbed-stubs-headers
-        mbed-headers-connectivity
         mbed-headers-platform
         mbed-headers-lorawan
         mbed-headers-mbedtls

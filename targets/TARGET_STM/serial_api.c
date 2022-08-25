@@ -417,6 +417,13 @@ void serial_baud(serial_t *obj, int baudrate)
             return;
         }
 #endif
+#if ((MBED_CONF_TARGET_LPUART_CLOCK_SOURCE) & USE_LPUART_CLK_PCLK3)
+        PeriphClkInitStruct.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_PCLK3;
+        HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct);
+        if (init_uart(obj) == HAL_OK) {
+            return;
+        }
+#endif
 #if ((MBED_CONF_TARGET_LPUART_CLOCK_SOURCE) & USE_LPUART_CLK_HSI)
         // Enable HSI in case it is not already done
         if (!__HAL_RCC_GET_FLAG(RCC_FLAG_HSIRDY)) {
@@ -622,8 +629,12 @@ HAL_StatusTypeDef init_uart(serial_t *obj)
 #if defined(UART_ONE_BIT_SAMPLE_DISABLE) // F0/F3/F7/G0/H7/L0/L4/L5/WB
     huart->Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
 #endif
-#if defined(UART_PRESCALER_DIV1) // G0/H7/L4/L5/WB
-    huart->Init.ClockPrescaler = UART_PRESCALER_DIV1;
+#if defined(UART_PRESCALER_DIV1) // G0/G4/H7/L4/L5/U5/WB/WL
+    if (obj_s->baudrate < 4800) {
+        huart->Init.ClockPrescaler = UART_PRESCALER_DIV16;
+    } else {
+        huart->Init.ClockPrescaler = UART_PRESCALER_DIV1;
+    }
 #endif
 #if defined(UART_ADVFEATURE_NO_INIT) // F0/F3/F7/G0/H7/L0/L4//5/WB
     huart->AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
